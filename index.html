@@ -87,7 +87,7 @@
     <script>
         async function processPDF(file) {
             const output = document.getElementById('output');
-            output.innerHTML = '<p>Processing PDF...</p>';
+            output.innerHTML = '<p>Processing PDF (streaming output page by page)...</p>';
 
             const arrayBuffer = await file.arrayBuffer();
             const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
