@@ -87,7 +87,7 @@
     <script>
         async function processPDF(file) {
             const output = document.getElementById('output');
-            output.innerHTML = '<p>Processing PDF (streaming output page by page)...</p>';
+            output.innerHTML = '<p>Processing PDF...</p>';
 
             const arrayBuffer = await file.arrayBuffer();
             const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
@@ -146,12 +146,25 @@
         async function drawBoundingBox(bbox, imageSrc, pageNum, wordIndex) {
             const image = await Jimp.read(imageSrc);
             
-            // Draw red bounding box
+            // Define colors
+            const blackThreshold = 50; // Adjust this value to fine-tune what's considered "black"
+            const whiteThreshold = 200; // Adjust this value to fine-tune what's considered "white"
+            const neonYellow = Jimp.rgbaToInt(255, 255, 0, 255); // Pure neon yellow
+            
+            // Draw the highlight over the entire bounding box
             image.scan(bbox.x0, bbox.y0, bbox.x1 - bbox.x0, bbox.y1 - bbox.y0, function(x, y, idx) {
-                if (x === bbox.x0 || x === bbox.x1 - 1 || y === bbox.y0 || y === bbox.y1 - 1) {
-                    this.bitmap.data[idx + 0] = 255; // Red
-                    this.bitmap.data[idx + 1] = 0;   // Green
-                    this.bitmap.data[idx + 2] = 0;   // Blue
+                const currentColor = Jimp.intToRGBA(this.getPixelColor(x, y));
+                const brightness = (currentColor.r + currentColor.g + currentColor.b) / 3;
+                
+                if (brightness <= blackThreshold) {
+                    // Do nothing for black pixels
+                } else if (brightness >= whiteThreshold) {
+                    // Change white pixels to neon yellow
+                    this.setPixelColor(neonYellow, x, y);
+                } else {
+                    // For other colors, set a low opacity yellow
+                    const newColor = Jimp.rgbaToInt(255, 255, 0, 64); // Yellow with low opacity
+                    this.setPixelColor(newColor, x, y);
                 }
             });
 
