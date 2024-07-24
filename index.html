@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF OCR with Visualization</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.9.359/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jimp@0.22.12/browser/lib/jimp.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1e1e1e;
+            color: #ffffff;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        #pdfInput {
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: #2c2c2c;
+            color: #ffffff;
+            border: none;
+            border-radius: 5px;
+        }
+        #output {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+        }
+        .page-container {
+            display: flex;
+            margin-bottom: 20px;
+            background-color: #2c2c2c;
+            border-radius: 10px;
+            overflow: hidden;
+            flex-grow: 1;
+        }
+        .button-list {
+            width: 250px;
+            padding: 10px;
+            overflow-y: auto;
+            max-height: 80vh;
+            background-color: #363636;
+        }
+        .button-list button {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 5px;
+            background-color: #4a4a4a;
+            color: #ffffff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .button-list button:hover {
+            background-color: #5a5a5a;
+        }
+        .image-container {
+            flex-grow: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            background-color: #252525;
+        }
+        .image-container img {
+            max-width: 100%;
+            max-height: 80vh;
+            object-fit: contain;
+        }
+        p {
+            text-align: center;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <input type="file" id="pdfInput" accept=".pdf">
+    <div id="output"></div>
+
+    <script>
+        async function processPDF(file) {
+            const output = document.getElementById('output');
+            output.innerHTML = '<p>Processing PDF...</p>';
+
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
+
+            const worker = await Tesseract.createWorker('eng');
+
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const scale = 1.5;
+                const viewport = page.getViewport({scale});
+
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+
+                await page.render({canvasContext: context, viewport}).promise;
+
+                const { data } = await worker.recognize(canvas);
+
+                const pageContainer = document.createElement('div');
+                pageContainer.className = 'page-container';
+                pageContainer.id = `page-${i}`;
+
+                const buttonList = document.createElement('div');
+                buttonList.className = 'button-list';
+
+                const imageContainer = document.createElement('div');
+                imageContainer.className = 'image-container';
+
+                const img = document.createElement('img');
+                img.src = canvas.toDataURL();
+                imageContainer.appendChild(img);
+
+                data.words.forEach((word, index) => {
+                    const button = document.createElement('button');
+                    button.textContent = word.text;
+                    button.setAttribute('onclick', `drawBoundingBox(${JSON.stringify(word.bbox)}, '${img.src}', ${i}, ${index})`);
+                    buttonList.appendChild(button);
+                });
+
+                pageContainer.appendChild(buttonList);
+                pageContainer.appendChild(imageContainer);
+                output.appendChild(pageContainer);
+
+                if (i < pdf.numPages) {
+                    const pageBreak = document.createElement('p');
+                    pageBreak.textContent = `Page ${i} of ${pdf.numPages}`;
+                    output.appendChild(pageBreak);
+                }
+            }
+
+            await worker.terminate();
+        }
+
+        async function drawBoundingBox(bbox, imageSrc, pageNum, wordIndex) {
+            const image = await Jimp.read(imageSrc);
+            
+            // Draw red bounding box
+            image.scan(bbox.x0, bbox.y0, bbox.x1 - bbox.x0, bbox.y1 - bbox.y0, function(x, y, idx) {
+                if (x === bbox.x0 || x === bbox.x1 - 1 || y === bbox.y0 || y === bbox.y1 - 1) {
+                    this.bitmap.data[idx + 0] = 255; // Red
+                    this.bitmap.data[idx + 1] = 0;   // Green
+                    this.bitmap.data[idx + 2] = 0;   // Blue
+                }
+            });
+
+            // Convert to base64
+            const base64 = await image.getBase64Async(Jimp.MIME_PNG);
+
+            // Update image
+            const img = document.querySelector(`#page-${pageNum} img`);
+            if (img) {
+                img.src = base64;
+            } else {
+                console.error(`Image not found for page ${pageNum}`);
+            }
+        }
+
+        document.getElementById('pdfInput').addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                processPDF(file);
+            }
+        });
+    </script>
+</body>
+</html>
